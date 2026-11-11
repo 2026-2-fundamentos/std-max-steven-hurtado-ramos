@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 import pandas as pd
 
@@ -53,6 +54,12 @@ def clean_column_names(df):
     # 'City ' -> "city"
     # 'Purchase Date' -> "purchase_date"
     df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_")
+    return df
+
+
+def clean_supplier_id_column(df):
+    # Los identificadores son etiquetas: conserva los ceros iniciales.
+    df.loc[:, "supplier_id"] = df["supplier_id"].astype("string").str.strip()
     return df
 
 
@@ -114,73 +121,88 @@ def clean_purchase_date_column(df):
     return df
 
 
+def _parse_numeric_value(value):
+    """Parsea números con separadores de miles/decimales y moneda opcional."""
+    if pd.isna(value):
+        return pd.NA
+
+    text = str(value).strip()
+    if not text or text.upper() in {"N/A", "NA", "NULL"}:
+        return pd.NA
+
+    text = re.sub(r"(?i)COP", "", text).replace("$", "").replace(" ", "")
+    sign = ""
+    if text[:1] in {"+", "-"}:
+        sign, text = text[0], text[1:]
+
+    if not text or not text[0].isdigit() or any(char not in "0123456789.," for char in text):
+        raise ValueError(f"Valor numérico no válido: {value!r}")
+
+    separators = [index for index, char in enumerate(text) if char in ".,"]
+    if not separators:
+        return float(sign + text)
+
+    last_separator = separators[-1]
+    digits_after_last = len(text) - last_separator - 1
+    has_decimal_part = digits_after_last in {1, 2}
+    if has_decimal_part:
+        integer_part = text[:last_separator].replace(".", "").replace(",", "")
+        decimal_part = text[last_separator + 1 :]
+        normalized = f"{integer_part}.{decimal_part}"
+    else:
+        normalized = text.replace(".", "").replace(",", "")
+
+    return float(sign + normalized)
+
+
 def clean_amount_column(df):
+    def parse_amount(value):
+        if pd.isna(value):
+            return pd.NA
 
-    def clean_strings_ending_with_k(series):
-        # Convierte valores como "1.5K" a "1500"
-        def convert_value(value):
-            if isinstance(value, str) and value.endswith("K"):
-                try:
-                    return int(float(value[:-1]) * 1000)
-                except ValueError:
-                    return value
-            return value
+        text = str(value).strip()
+        is_thousands = text.upper().endswith("K")
+        parsed = _parse_numeric_value(text[:-1] if is_thousands else text)
+        if is_thousands and not pd.isna(parsed):
+            return parsed * 1000
+        return parsed
 
-        return series.apply(convert_value)
+    df.loc[:, "amount"] = pd.to_numeric(df["amount"].map(parse_amount), errors="raise")
+    return df
 
-    def clean_strings_starting_with_COP(series):
-        # Convierte valores como "COP 1,250,000" a "1250000"
-        def convert_value(value):
-            if isinstance(value, str) and value.startswith("COP"):
-                try:
-                    return int(value[3:].replace(",", "").strip())
-                except ValueError:
-                    return value
-            return value
 
-        return series.apply(convert_value)
-
-    def clean_strings_starting_with_dollar(series):
-        # Convierte valores como "$1,250,000" a "1250000"
-        def convert_value(value):
-            if isinstance(value, str) and value.startswith("$"):
-                try:
-                    return int(value[1:].replace(",", "").strip())
-                except ValueError:
-                    return value
-            return value
-
-        return series.apply(convert_value)
-
-    def remove_dots(series):
-        # Elimina los puntos de los valores numéricos
-        def convert_value(value):
-            if isinstance(value, str):
-                try:
-                    return int(value.replace(".", "").strip())
-                except ValueError:
-                    return value
-            return value
-
-        return series.apply(convert_value)
-
-    df.loc[:, "amount"] = df["amount"].str.strip()
-    df.loc[:, "amount"] = clean_strings_ending_with_k(df["amount"])
-    df.loc[:, "amount"] = clean_strings_starting_with_COP(df["amount"])
-    df.loc[:, "amount"] = clean_strings_starting_with_dollar(df["amount"])
-    df.loc[:, "amount"] = remove_dots(df["amount"])
-
+def clean_unit_price_column(df):
+    df.loc[:, "unit_price"] = pd.to_numeric(
+        df["unit_price"].map(_parse_numeric_value), errors="raise"
+    )
     return df
 
 
 def clean_discount_column(df):
-    # Limpia la columna de descuento
-    df.loc[:, "discount"] = df["discount"].str.strip()
-    df.loc[:, "discount"] = df["discount"].str.replace("%", "", regex=False)
-    df.loc[:, "discount"] = df["discount"].map(
-        lambda x: float(x) / 100 if not pd.isna(x) and float(x) > 1 else x
-    )
+    def parse_discount(value):
+        if pd.isna(value):
+            return pd.NA
 
+        text = str(value).strip()
+        if not text or text.upper() in {"N/A", "NA", "NULL"}:
+            return pd.NA
+
+        has_percent_sign = text.endswith("%")
+        if has_percent_sign:
+            text = text[:-1].strip()
+
+        try:
+            numeric_value = float(text)
+        except ValueError as error:
+            raise ValueError(f"Descuento no válido: {value!r}") from error
+
+        if has_percent_sign or numeric_value > 1:
+            numeric_value /= 100
+        return numeric_value
+
+    df.loc[:, "discount"] = pd.to_numeric(
+        df["discount"].map(parse_discount), errors="raise"
+    )
     return df
 
 
@@ -198,13 +220,17 @@ def clean_weight_column(df):
 
 
 def main():
-    df = pd.read_csv(INPUT_FILE)
+    df = pd.read_csv(
+        INPUT_FILE, dtype={" Supplier ID ": "string"}, encoding="utf-8-sig"
+    )
     df = clean_column_names(df)
+    df = clean_supplier_id_column(df)
     df = clean_supplier_column(df)
     df = clean_country_column(df)
     df = clean_city_column(df)
     df = clean_purchase_date_column(df)
     df = clean_amount_column(df)
+    df = clean_unit_price_column(df)
     df = clean_weight_column(df)
     df = clean_discount_column(df)
     df.to_csv(OUTPUT_FILE, index=False)
@@ -212,5 +238,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
- 
