@@ -31,7 +31,6 @@ SUPPLIER_REPLACEMENTS = {
     "Telefónica  Colombia": "Telefónica Colombia",
 }
 
-
 COUNTRY_REPLACEMENTS = {
     "CO": "COL",
     "COLOMBIA": "COL",
@@ -49,66 +48,108 @@ CITY_REPLACEMENTS = {
 
 
 def clean_column_names(df):
-    # Casos tipicos en la columna
-    # ' Supplier ID ' -> "supplier_id"
-    # 'City ' -> "city"
-    # 'Purchase Date' -> "purchase_date"
-    df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_")
+    df.columns = (
+        df.columns.astype(str)
+        .str.strip()
+        .str.lower()
+        .str.replace(r"\s+", "_", regex=True)
+        .str.replace(r"[^a-z0-9_]+", "_", regex=True)
+        .str.replace(r"_+", "_", regex=True)
+        .str.replace(r"^_|_$", "", regex=True)
+    )
     return df
 
 
 def clean_supplier_id_column(df):
-    # Los identificadores son etiquetas: conserva los ceros iniciales.
     df.loc[:, "supplier_id"] = df["supplier_id"].astype("string").str.strip()
     return df
 
 
 def clean_supplier_column(df):
-    df.loc[:, "supplier"] = df["supplier"].str.strip()
-    df.loc[:, "supplier"] = df["supplier"].replace(SUPPLIER_REPLACEMENTS)
+    series = df["supplier"].astype("string").str.strip().str.replace(r"\s+", " ", regex=True)
+    normalized = {k.casefold(): v for k, v in SUPPLIER_REPLACEMENTS.items()}
+    df.loc[:, "supplier"] = series.str.casefold().map(normalized).fillna(series)
     return df
 
 
 def clean_country_column(df):
+    series = df["country"].astype("string").str.strip().str.replace(r"\s+", " ", regex=True)
+    normalized = {k.casefold(): v for k, v in COUNTRY_REPLACEMENTS.items()}
+    df.loc[:, "country"] = series.str.casefold().map(normalized).fillna(series)
     df.loc[:, "country"] = df["country"].str.strip()
-    df.loc[:, "country"] = df["country"].replace(COUNTRY_REPLACEMENTS)
     return df
 
 
 def clean_city_column(df):
-    df.loc[:, "city"] = df["city"].str.strip()
-    df.loc[:, "city"] = df["city"].replace(CITY_REPLACEMENTS)
+    series = df["city"].astype("string").str.strip().str.replace(r"\s+", " ", regex=True)
+    normalized = {k.casefold(): v for k, v in CITY_REPLACEMENTS.items()}
+    df.loc[:, "city"] = series.str.casefold().map(normalized).fillna(series)
     return df
 
 
-def clean_purchase_date_column(df):
+def _normalize_numeric_string(text):
+    text = str(text).strip()
+    if text == "" or text.upper() in {"N/A", "NA", "NULL"}:
+        return pd.NA
 
+    text = text.replace("COP", "").replace("$", "").replace(" ", "")
+    text = text.replace("(", "-").replace(")", "")
+
+    if text.endswith("K"):
+        try:
+            value = float(text[:-1].replace(".", "").replace(",", ""))
+            return value * 1000
+        except ValueError:
+            return pd.NA
+
+    if "." in text and "," in text:
+        if text.rfind(".") > text.rfind(","):
+            text = text.replace(",", "")
+        else:
+            text = text.replace(".", "").replace(",", ".")
+    elif "," in text:
+        parts = text.split(",")
+        if len(parts) > 1 and len(parts[-1]) in {1, 2} and len(parts) > 1:
+            text = ".".join(parts)
+        else:
+            text = "".join(parts)
+    elif "." in text and text.count(".") > 1:
+        text = text.replace(".", "")
+
+    try:
+        return float(text)
+    except ValueError:
+        return pd.NA
+
+
+def clean_purchase_date_column(df):
     def convert_yyyy_s_mm_s_dd_to_yyyy_mm_dd(series):
-        # Convierte fechas en formato "YYYY/MM/DD" a "YYYY-MM-DD"
-        series = series.str.replace(r"(\d{4})/(\d{2})/(\d{2})", r"\1-\2-\3", regex=True)
-        return series
+        return series.str.replace(r"(\d{4})/(\d{2})/(\d{2})", r"\1-\2-\3", regex=True)
 
     def convert_mmddyyyy_to_yyyy_mm_dd(series):
-        # Corrige solo fechas con el día primero, cuando el día es mayor que 12.
         def convert_date(match):
             g1, g2, g3 = match.groups()
-            if int(g2) > 12:  # el dia aparece en la mitad
-                return f"{g3}-{g1}-{g2}"
-            return f"{g3}-{g2}-{g1}"
+            month = int(g1)
+            day = int(g2)
+            year = int(g3)
+            if day > 12:
+                month, day = month, day
+            elif month > 12:
+                day, month = month, day
+            return f"{year:04d}-{month:02d}-{day:02d}"
 
         return series.str.replace(r"(\d{2})/(\d{2})/(\d{4})", convert_date, regex=True)
 
     def convert_dd_mm_yyyy_to_yyyy_mm_dd_separated_with_dots(series):
-        # Corrige fechas en formato "DD.MM.YYYY" a "YYYY-MM-DD"
         return series.str.replace(r"(\d{2})\.(\d{2})\.(\d{4})", r"\3-\2-\1", regex=True)
 
     def convert_dd_mm_yy_to_yyyy_mm_dd_separated_with_hyphens(series):
-        # Corrige fechas en formato "DD-MM-YY" a "YYYY-MM-DD"
-        return series.str.replace(
-            r"^(\d{2})-(\d{2})-(\d{2})$", r"20\3-\2-\1", regex=True
-        )
+        return series.str.replace(r"^(\d{2})-(\d{2})-(\d{2})$", r"20\3-\2-\1", regex=True)
 
-    df.loc[:, "purchase_date"] = df["purchase_date"].str.strip()
+    def convert_mm_dd_yy_to_yyyy_mm_dd(series):
+        return series.str.replace(r"^(\d{2})-(\d{2})-(\d{2})$", r"20\3-\1-\2", regex=True)
+
+    df.loc[:, "purchase_date"] = df["purchase_date"].astype("string").str.strip()
     df.loc[:, "purchase_date"] = convert_yyyy_s_mm_s_dd_to_yyyy_mm_dd(df["purchase_date"])
     df.loc[:, "purchase_date"] = convert_mmddyyyy_to_yyyy_mm_dd(df["purchase_date"])
     df.loc[:, "purchase_date"] = convert_dd_mm_yyyy_to_yyyy_mm_dd_separated_with_dots(
@@ -117,92 +158,28 @@ def clean_purchase_date_column(df):
     df.loc[:, "purchase_date"] = convert_dd_mm_yy_to_yyyy_mm_dd_separated_with_hyphens(
         df["purchase_date"]
     )
-
+    df.loc[:, "purchase_date"] = convert_mm_dd_yy_to_yyyy_mm_dd(df["purchase_date"])
+    df.loc[:, "purchase_date"] = pd.to_datetime(df["purchase_date"], errors="coerce").dt.strftime("%Y-%m-%d")
     return df
 
 
-def _parse_numeric_value(value):
-    """Parsea números con separadores de miles/decimales y moneda opcional."""
-    if pd.isna(value):
-        return pd.NA
-
-    text = str(value).strip()
-    if not text or text.upper() in {"N/A", "NA", "NULL"}:
-        return pd.NA
-
-    text = re.sub(r"(?i)COP", "", text).replace("$", "").replace(" ", "")
-    sign = ""
-    if text[:1] in {"+", "-"}:
-        sign, text = text[0], text[1:]
-
-    if not text or not text[0].isdigit() or any(char not in "0123456789.," for char in text):
-        raise ValueError(f"Valor numérico no válido: {value!r}")
-
-    separators = [index for index, char in enumerate(text) if char in ".,"]
-    if not separators:
-        return float(sign + text)
-
-    last_separator = separators[-1]
-    digits_after_last = len(text) - last_separator - 1
-    has_decimal_part = digits_after_last in {1, 2}
-    if has_decimal_part:
-        integer_part = text[:last_separator].replace(".", "").replace(",", "")
-        decimal_part = text[last_separator + 1 :]
-        normalized = f"{integer_part}.{decimal_part}"
-    else:
-        normalized = text.replace(".", "").replace(",", "")
-
-    return float(sign + normalized)
-
-
 def clean_amount_column(df):
-    def parse_amount(value):
-        if pd.isna(value):
-            return pd.NA
-
-        text = str(value).strip()
-        is_thousands = text.upper().endswith("K")
-        parsed = _parse_numeric_value(text[:-1] if is_thousands else text)
-        if is_thousands and not pd.isna(parsed):
-            return parsed * 1000
-        return parsed
-
-    df.loc[:, "amount"] = pd.to_numeric(df["amount"].map(parse_amount), errors="raise")
+    df.loc[:, "amount"] = df["amount"].map(_normalize_numeric_string)
+    df.loc[:, "amount"] = pd.to_numeric(df["amount"], errors="coerce")
     return df
 
 
 def clean_unit_price_column(df):
-    df.loc[:, "unit_price"] = pd.to_numeric(
-        df["unit_price"].map(_parse_numeric_value), errors="raise"
-    )
+    df.loc[:, "unit_price"] = df["unit_price"].map(_normalize_numeric_string)
+    df.loc[:, "unit_price"] = pd.to_numeric(df["unit_price"], errors="coerce")
     return df
 
 
 def clean_discount_column(df):
-    def parse_discount(value):
-        if pd.isna(value):
-            return pd.NA
-
-        text = str(value).strip()
-        if not text or text.upper() in {"N/A", "NA", "NULL"}:
-            return pd.NA
-
-        has_percent_sign = text.endswith("%")
-        if has_percent_sign:
-            text = text[:-1].strip()
-
-        try:
-            numeric_value = float(text)
-        except ValueError as error:
-            raise ValueError(f"Descuento no válido: {value!r}") from error
-
-        if has_percent_sign or numeric_value > 1:
-            numeric_value /= 100
-        return numeric_value
-
-    df.loc[:, "discount"] = pd.to_numeric(
-        df["discount"].map(parse_discount), errors="raise"
-    )
+    series = df["discount"].astype("string").str.strip()
+    series = series.str.replace("%", "", regex=False)
+    numeric = pd.to_numeric(series, errors="coerce")
+    df.loc[:, "discount"] = numeric.where(numeric <= 1, numeric / 100)
     return df
 
 
@@ -220,9 +197,7 @@ def clean_weight_column(df):
 
 
 def main():
-    df = pd.read_csv(
-        INPUT_FILE, dtype={" Supplier ID ": "string"}, encoding="utf-8-sig"
-    )
+    df = pd.read_csv(INPUT_FILE, dtype={" Supplier ID ": "string"}, encoding="utf-8-sig")
     df = clean_column_names(df)
     df = clean_supplier_id_column(df)
     df = clean_supplier_column(df)
@@ -233,6 +208,8 @@ def main():
     df = clean_unit_price_column(df)
     df = clean_weight_column(df)
     df = clean_discount_column(df)
+
+    OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(OUTPUT_FILE, index=False)
 
 
