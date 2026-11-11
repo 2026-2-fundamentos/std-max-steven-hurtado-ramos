@@ -220,7 +220,9 @@ def clean_weight_column(df):
 
 
 def main():
-    df = pd.read_csv(INPUT_FILE, dtype="string")
+    df = pd.read_csv(
+        INPUT_FILE, dtype={" Supplier ID ": "string"}, encoding="utf-8-sig"
+    )
     df = clean_column_names(df)
     df = clean_supplier_id_column(df)
     df = clean_supplier_column(df)
