@@ -1,0 +1,10 @@
+SUBMISSION_DIR.mkdir(parents=True, exist_ok=True)
+
+shutil.copyfile(
+    OUTPUT_DIR / "part-00000",
+    SUBMISSION_DIR / "part-00000",
+)
+shutil.copyfile(
+    OUTPUT_DIR / "_SUCCESS",
+    SUBMISSION_DIR / "_SUCCESS",
+)
