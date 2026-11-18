@@ -26,7 +26,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version-file: .python-version
+          python-version: "3.9"
 
       - name: Install dependencies
         run: |
@@ -35,6 +35,8 @@ jobs:
           if [ -f requirements.txt ]; then
             python -m pip install -r requirements.txt
           fi
+
+          python -m pip install pytest
 
       # ---------------------------------------------------------
       # Grading
@@ -190,7 +192,7 @@ jobs:
                   )
                   file.write(
                       "An activity directory must start with `L` or `P`, "
-                      "followed by three digits and contain `tests/`.\n"
+                      "followed by three digits and `_`, and contain `tests/`.\n"
                   )
               else:
                   file.write("| Activity | Result |\n")
@@ -281,3 +283,4 @@ jobs:
 
               sys.exit(1)
           PY
+
