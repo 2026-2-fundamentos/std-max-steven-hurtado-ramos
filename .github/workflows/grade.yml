@@ -26,7 +26,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.9"
+          python-version: "3.12"
 
       - name: Install dependencies
         run: |
@@ -47,6 +47,7 @@ jobs:
           python - <<'PY'
           import json
           import os
+          import re
           import subprocess
           import sys
 
@@ -70,14 +71,14 @@ jobs:
           # Activity discovery
           # -----------------------------------------------------
 
+          activity_pattern = re.compile(r"^[PL]\d{3}_")
+
           activities = sorted(
               (
                   directory
                   for directory in repository_root.iterdir()
                   if directory.is_dir()
-                  and directory.name[:1] in ("L", "P")
-                  and directory.name[1:4].isdigit()
-                  and directory.name[4:5] == "_"
+                  and activity_pattern.match(directory.name)
                   and (directory / "tests").is_dir()
               ),
               key=lambda directory: directory.name,
@@ -191,8 +192,8 @@ jobs:
                       "❌ No valid activity directories were found.\n\n"
                   )
                   file.write(
-                      "An activity directory must start with `L` or `P`, "
-                      "followed by three digits and `_`, and contain `tests/`.\n"
+                  "An activity must follow the `Pxxx_*` or `Lxxx_*` "
+                  "convention and contain `src/` and `tests/`.\n"
                   )
               else:
                   file.write("| Activity | Result |\n")
@@ -282,5 +283,6 @@ jobs:
                   print(f"- {activity}")
 
               sys.exit(1)
-          PY
 
+          print("All activities passed.")
+          PY

@@ -1,0 +1,6 @@
+{
+  "test_accuracy": 0.8397058823529412,
+  "test_balanced_accuracy": 0.7339512339512341,
+  "test_macro_f1": 0.7656536870176858,
+  "test_size": 680
+}
