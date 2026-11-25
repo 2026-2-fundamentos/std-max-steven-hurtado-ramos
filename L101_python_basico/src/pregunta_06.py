@@ -1,16 +1,27 @@
+import csv
+import gzip
+from pathlib import Path
+
+
+DATA_FILE = Path(__file__).resolve().parents[1] / "data" / "data.csv.gz"
+
+
 def pregunta_06():
-    """
-    La quinta columna (`metrics`) contiene pares `clave:valor` separados por
-    comas. Para cada clave, encuentre el valor mínimo y el valor máximo que
-    aparecen en todo el archivo. Retorne una lista de tuplas
-    `(clave, mínimo, máximo)` ordenada alfabéticamente por la clave.
+    ranges = {}
 
-    Observe que el orden es mínimo y luego máximo, al contrario de la
-    pregunta 5.
+    with gzip.open(DATA_FILE, "rt", encoding="utf-8", newline="") as file:
+        for row in csv.reader(file, delimiter="\t"):
+            for pair in row[4].split(","):
+                key, raw_value = pair.split(":", 1)
+                value = int(raw_value)
 
-    Ejemplo del formato de la respuesta:
+                if key not in ranges:
+                    ranges[key] = [value, value]  # mínimo, máximo
+                else:
+                    ranges[key][0] = min(ranges[key][0], value)
+                    ranges[key][1] = max(ranges[key][1], value)
 
-        [("aaa", 1, 9), ("bbb", 1, 9), ...]
-    """
-
-    raise NotImplementedError
+    return [
+        (key, ranges[key][0], ranges[key][1])
+        for key in sorted(ranges)
+    ]

@@ -1,37 +1,99 @@
+from pathlib import Path
+
+import pandas as pd
+
+
+ACTIVITY_DIR = Path(__file__).resolve().parents[1]
+DATA_FILE = ACTIVITY_DIR / "data" / "solicitudes_de_credito.csv.gz"
+OUTPUT_FILE = ACTIVITY_DIR / "submission" / "solicitudes_de_credito.csv"
+
+COLUMNS = [
+    "sexo",
+    "tipo_de_emprendimiento",
+    "idea_negocio",
+    "barrio",
+    "estrato",
+    "comuna_ciudadano",
+    "fecha_de_beneficio",
+    "monto_del_credito",
+    "línea_credito",
+]
+
+TEXT_COLUMNS = [
+    "sexo",
+    "tipo_de_emprendimiento",
+    "idea_negocio",
+    "barrio",
+    "línea_credito",
+]
+
+
 def pregunta_01():
-    """
-    El archivo `data/solicitudes_de_credito.csv.gz` contiene las solicitudes de
-    un programa de crédito, pero llegó sucio: tiene una columna de índice que
-    no pertenece a los datos, registros duplicados, registros incompletos y
-    valores que representan lo mismo escritos de formas distintas en los
-    campos de texto, las fechas, el estrato y el monto.
+    data = pd.read_csv(DATA_FILE, sep=";", compression="gzip")
 
-    Su tarea es limpiarlo y guardar el resultado en
-    `submission/solicitudes_de_credito.csv`, usando punto y coma (`;`) como
-    separador y sin el índice de Pandas.
+    data.columns = (
+        data.columns.astype(str)
+        .str.replace("\ufeff", "", regex=False)
+        .str.strip()
+        .str.lower()
+        .str.replace(r"\s+", "_", regex=True)
+    )
+    data = data[COLUMNS].copy()
 
-    El archivo limpio debe cumplir lo siguiente:
+    # Este bloque debe quedar dentro de la función.
+    for column in TEXT_COLUMNS:
+        data[column] = (
+            data[column]
+            .astype("string")
+            .str.lower()
+            .str.replace("-", " ", regex=False)
+            .str.replace(r"\s+", " ", regex=True)
+            .str.strip()
+            .replace("", pd.NA)
+        )
 
-    - Contiene solamente las nueve columnas `sexo`, `tipo_de_emprendimiento`,
-      `idea_negocio`, `barrio`, `estrato`, `comuna_ciudadano`,
-      `fecha_de_beneficio`, `monto_del_credito` y `línea_credito`, en ese
-      orden.
-    - Los campos de texto están en minúsculas y sus palabras separadas por
-      espacios.
-    - `estrato` y `monto_del_credito` son números enteros, sin símbolos ni
-      separadores de miles.
-    - Todas las fechas de `fecha_de_beneficio` usan un mismo formato, por
-      ejemplo `AAAA-MM-DD`.
-    - No hay registros incompletos. La única excepción es
-      `comuna_ciudadano`: sus valores faltantes son parte de los datos
-      originales y deben conservarse.
-    - No hay registros duplicados.
+    estrato = data["estrato"].astype("string").str.extract(
+        r"(-?\d+)", expand=False
+    )
+    data["estrato"] = pd.to_numeric(
+        estrato, errors="coerce"
+    ).astype("Int64")
 
-    Ejemplo del formato del archivo:
+    monto = (
+        data["monto_del_credito"]
+        .astype("string")
+        .str.strip()
+        .str.replace(r"\.00$", "", regex=True)
+        .str.replace(r"[^\d-]", "", regex=True)
+        .replace("", pd.NA)
+    )
+    data["monto_del_credito"] = pd.to_numeric(
+        monto, errors="coerce"
+    ).astype("Int64")
 
-        sexo;tipo_de_emprendimiento;idea_negocio;barrio;estrato;...
-        femenino;comercio;almacen de ropa en;los cerros el vergel;2;...
-        ...
-    """
+    comuna = data["comuna_ciudadano"].astype("string").str.strip()
+    data["comuna_ciudadano"] = pd.to_numeric(
+        comuna, errors="coerce"
+    ).astype("Int64")
 
-    raise NotImplementedError
+    date_text = data["fecha_de_beneficio"].astype("string").str.strip()
+    dates = pd.to_datetime(
+        date_text, format="%d/%m/%Y", errors="coerce"
+    )
+
+    for date_format in ("%Y-%m-%d", "%Y/%m/%d"):
+        dates = dates.fillna(
+            pd.to_datetime(date_text, format=date_format, errors="coerce")
+        )
+
+    data["fecha_de_beneficio"] = dates.dt.strftime("%Y-%m-%d")
+
+    required_columns = [
+        column for column in COLUMNS
+        if column != "comuna_ciudadano"
+    ]
+    data = data.dropna(subset=required_columns)
+    data = data.drop_duplicates(subset=COLUMNS)
+
+    OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    data.to_csv(OUTPUT_FILE, sep=";", index=False)

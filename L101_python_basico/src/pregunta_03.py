@@ -1,12 +1,18 @@
+import csv
+import gzip
+from pathlib import Path
+
+
+DATA_FILE = Path(__file__).resolve().parents[1] / "data" / "data.csv.gz"
+
+
 def pregunta_03():
-    """
-    Sume los valores de la segunda columna (`value`) para cada letra de la
-    primera columna (`letter`). Retorne una lista de tuplas `(letra, suma)`
-    ordenada alfabéticamente por la letra.
+    totals = {}
 
-    Ejemplo del formato de la respuesta:
+    with gzip.open(DATA_FILE, "rt", encoding="utf-8", newline="") as file:
+        for row in csv.reader(file, delimiter="\t"):
+            letter = row[0]
+            value = int(row[1])
+            totals[letter] = totals.get(letter, 0) + value
 
-        [("A", 53), ("B", 36), ("C", 27), ...]
-    """
-
-    raise NotImplementedError
+    return sorted(totals.items())

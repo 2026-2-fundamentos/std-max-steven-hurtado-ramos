@@ -1,12 +1,26 @@
+import csv
+import gzip
+from pathlib import Path
+
+
+DATA_FILE = Path(__file__).resolve().parents[1] / "data" / "data.csv.gz"
+
+
 def pregunta_05():
-    """
-    Para cada letra de la primera columna (`letter`), encuentre el valor
-    máximo y el valor mínimo de la segunda columna (`value`). Retorne una lista
-    de tuplas `(letra, máximo, mínimo)` ordenada alfabéticamente por la letra.
+    ranges = {}
 
-    Ejemplo del formato de la respuesta:
+    with gzip.open(DATA_FILE, "rt", encoding="utf-8", newline="") as file:
+        for row in csv.reader(file, delimiter="\t"):
+            letter = row[0]
+            value = int(row[1])
 
-        [("A", 9, 2), ("B", 9, 1), ...]
-    """
+            if letter not in ranges:
+                ranges[letter] = [value, value]  # mínimo, máximo
+            else:
+                ranges[letter][0] = min(ranges[letter][0], value)
+                ranges[letter][1] = max(ranges[letter][1], value)
 
-    raise NotImplementedError
+    return [
+        (letter, ranges[letter][1], ranges[letter][0])
+        for letter in sorted(ranges)
+    ]

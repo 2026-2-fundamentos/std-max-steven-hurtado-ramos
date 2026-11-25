@@ -1,12 +1,18 @@
+import csv
+import gzip
+from pathlib import Path
+
+
+DATA_FILE = Path(__file__).resolve().parents[1] / "data" / "data.csv.gz"
+
+
 def pregunta_09():
-    """
-    Cuente cuántas veces aparece cada clave en la quinta columna (`metrics`)
-    de todo el archivo. Retorne un diccionario `{clave: cantidad}` con las
-    claves en orden alfabético.
+    counts = {}
 
-    Ejemplo del formato de la respuesta:
+    with gzip.open(DATA_FILE, "rt", encoding="utf-8", newline="") as file:
+        for row in csv.reader(file, delimiter="\t"):
+            for pair in row[4].split(","):
+                key, _ = pair.split(":", 1)
+                counts[key] = counts.get(key, 0) + 1
 
-        {"aaa": 13, "bbb": 16, "ccc": 23, ...}
-    """
-
-    raise NotImplementedError
+    return dict(sorted(counts.items()))

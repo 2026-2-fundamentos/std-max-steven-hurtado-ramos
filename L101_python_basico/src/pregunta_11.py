@@ -1,13 +1,19 @@
+import csv
+import gzip
+from pathlib import Path
+
+
+DATA_FILE = Path(__file__).resolve().parents[1] / "data" / "data.csv.gz"
+
+
 def pregunta_11():
-    """
-    La cuarta columna (`codes`) contiene letras minúsculas separadas por
-    comas. Para cada una de esas letras, sume los valores de la segunda
-    columna (`value`) de los registros en los que aparece. Retorne un
-    diccionario `{letra: suma}` con las letras en orden alfabético.
+    totals = {}
 
-    Ejemplo del formato de la respuesta:
+    with gzip.open(DATA_FILE, "rt", encoding="utf-8", newline="") as file:
+        for row in csv.reader(file, delimiter="\t"):
+            value = int(row[1])
 
-        {"a": 122, "b": 49, "c": 91, ...}
-    """
+            for code in row[3].split(","):
+                totals[code] = totals.get(code, 0) + value
 
-    raise NotImplementedError
+    return dict(sorted(totals.items()))

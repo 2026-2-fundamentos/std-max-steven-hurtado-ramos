@@ -1,46 +1,89 @@
+from pathlib import Path
+
 import pandas as pd
 
 
+ACTIVITY_DIR = Path(__file__).resolve().parents[1]
+DATA_DIR = ACTIVITY_DIR / "data"
+SUBMISSION_DIR = ACTIVITY_DIR / "submission"
+
+
 def clean_campaign_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """
-    Los datos de una campaña de mercadeo bancario llegaron repartidos en diez
-    archivos comprimidos, `data/bank-marketing-campaing-*.csv.gz`, con
-    información mezclada del cliente, de la campaña y del contexto económico.
-    Su tarea es leerlos directamente desde los archivos comprimidos, sin
-    descomprimirlos a mano, y separarlos en tres tablas limpias.
+    files = sorted(DATA_DIR.glob("bank-marketing-campaing-*.csv.gz"))
+    data = pd.concat(
+        [pd.read_csv(file, compression="gzip") for file in files],
+        ignore_index=True,
+    )
 
-    Guarde cada tabla como un CSV sin comprimir en `submission/`, sin el índice
-    de Pandas y con las columnas en el orden indicado:
+    client = data[
+        [
+            "client_id",
+            "age",
+            "job",
+            "marital",
+            "education",
+            "credit_default",
+            "mortgage",
+        ]
+    ].copy()
 
-    1. `client.csv`: `client_id`, `age`, `job`, `marital`, `education`,
-       `credit_default` y `mortgage`.
-       - En `job`, elimine los puntos y cambie los guiones por guiones bajos.
-       - En `education`, cambie los puntos por guiones bajos y deje el valor
-         `unknown` como faltante.
-       - En `credit_default` y `mortgage`, escriba 1 si el valor es `yes` y 0
-         en cualquier otro caso.
+    client["job"] = (
+        client["job"]
+        .str.replace(".", "", regex=False)
+        .str.replace("-", "_", regex=False)
+    )
+    client["education"] = (
+        client["education"]
+        .str.replace(".", "_", regex=False)
+        .replace("unknown", pd.NA)
+    )
 
-    2. `campaign.csv`: `client_id`, `number_contacts`, `contact_duration`,
-       `previous_campaign_contacts`, `previous_outcome`, `campaign_outcome` y
-       `last_contact_date`.
-       - En `previous_outcome`, escriba 1 si el valor es `success` y 0 en
-         cualquier otro caso.
-       - En `campaign_outcome`, escriba 1 si el valor es `yes` y 0 en
-         cualquier otro caso.
-       - Construya `last_contact_date` a partir de las columnas `month` y
-         `day`, usando el año 2022 y el formato `AAAA-MM-DD`.
+    for column in ["credit_default", "mortgage"]:
+        client[column] = (client[column] == "yes").astype(int)
 
-    3. `economics.csv`: `client_id`, `cons_price_idx` y
-       `euribor_three_months`.
+    month_numbers = {
+        "jan": 1,
+        "feb": 2,
+        "mar": 3,
+        "apr": 4,
+        "may": 5,
+        "jun": 6,
+        "jul": 7,
+        "aug": 8,
+        "sep": 9,
+        "oct": 10,
+        "nov": 11,
+        "dec": 12,
+    }
 
-    La función también debe retornar las tres tablas, en el orden `client`,
-    `campaign` y `economics`.
+    date_parts = pd.DataFrame(
+        {
+            "year": 2022,
+            "month": data["month"].str.lower().map(month_numbers),
+            "day": data["day"],
+        }
+    )
+    last_contact_date = pd.to_datetime(date_parts).dt.strftime("%Y-%m-%d")
 
-    Ejemplo del formato de `campaign.csv`:
+    campaign = pd.DataFrame(
+        {
+            "client_id": data["client_id"],
+            "number_contacts": data["number_contacts"],
+            "contact_duration": data["contact_duration"],
+            "previous_campaign_contacts": data["previous_campaign_contacts"],
+            "previous_outcome": (data["previous_outcome"] == "success").astype(int),
+            "campaign_outcome": (data["campaign_outcome"] == "yes").astype(int),
+            "last_contact_date": last_contact_date,
+        }
+    )
 
-        client_id,number_contacts,contact_duration,...,last_contact_date
-        0,1,261,...,2022-05-13
-        ...
-    """
+    economics = data[
+        ["client_id", "cons_price_idx", "euribor_three_months"]
+    ].copy()
 
-    raise NotImplementedError
+    SUBMISSION_DIR.mkdir(parents=True, exist_ok=True)
+    client.to_csv(SUBMISSION_DIR / "client.csv", index=False)
+    campaign.to_csv(SUBMISSION_DIR / "campaign.csv", index=False)
+    economics.to_csv(SUBMISSION_DIR / "economics.csv", index=False)
+
+    return client, campaign, economics

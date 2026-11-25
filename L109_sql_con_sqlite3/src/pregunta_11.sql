@@ -22,3 +22,9 @@
 --
 --  Escriba su consulta debajo de esta línea.
 --
+SELECT
+    CAST(strftime('%Y', c14) AS INTEGER) AS year,
+    COUNT(*) AS cant
+FROM tbl1
+WHERE strftime('%Y', c14) = '2018'
+GROUP BY strftime('%Y', c14);
