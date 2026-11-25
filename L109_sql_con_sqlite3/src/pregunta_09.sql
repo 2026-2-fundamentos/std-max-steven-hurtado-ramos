@@ -21,9 +21,7 @@
 --
 --  Escriba su consulta debajo de esta línea.
 --
-SELECT
-    CAST(strftime('%Y', c23) AS INTEGER) AS year,
-    AVG(c21) AS average_c21
+SELECT *
 FROM tbl2
-GROUP BY strftime('%Y', c23)
-ORDER BY year;
+ORDER BY c21 ASC
+LIMIT 1;
